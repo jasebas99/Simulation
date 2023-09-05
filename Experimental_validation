@@ -1,0 +1,79 @@
+clear all; clc;
+rho_pv=2333; % Densidad de las celdas de silicio policristalino [kg/m^3]
+rho_Tedlar=1200; %Densidad de la capa Tedlar [kg/m^3]
+rho_glass=3000; %Densidad de la capa de vidrio frontal [kg/m^3]
+c_pv=677; %Calor específico del módulo [J/kg K]
+c_Tedlar=1250; %Calor específico del Tedlar [J/kg K]
+c_glass=500; %Calor específico del vidrio frontal [J/kg K]
+d_pv=0.0003; %Espesor aproximado de la celda [m]
+d_Tedlar=0.0005; %Espesor de la lámina poliéster/Tedlar [m]
+d_glass=0.003; %Espesor del vidrio frontal [m]
+A=0.0782; %Área del módulo [m^2]
+C_pv=rho_pv*c_pv*d_pv*A; %Capacidad calorífica del módulo [J/K]
+C_Tedlar=rho_Tedlar*c_Tedlar*d_Tedlar*A; %Capacidad calorífica del Tedlar [J/K]
+C_glass=rho_glass*c_glass*d_glass*A; %Capacidad calorífica del vidrio [J/K]
+C_mod=C_pv+C_Tedlar+C_glass; %Capacidad calorífica del módulo [J/K]
+sigma=5.669*10^-8; %Constante de Stefan-Boltzamnn [W/m^2 K^4]
+epsilon_sky=0.96; %Para condiciones de cielo despejado
+epsilon_ground=0.96; %Emisividad de la tierra
+epsilon_mod=0.96; %Emisividad del módulo
+T_amb=300.15; %Temperatura ambiente [K]
+T_ground=T_amb; %Temperatura del suelo [K]
+delta_T=0; %Temperatura de cielo despejado [K]
+alpha=0.9; %Absortividad del vidrio
+G=[320,515,700,820,900,1020,1084,1411,1639,1776]; %Irradiancia [W/m^2]
+eta_ref=0.01; % Eficiencia del módulo
+beta_ref=0.005; %Coeficiente a condiciones estándar [1/K]
+T_ref=T_amb; %Temperatura de referencia a condiciones estándar [K]
+V_wind=0; %Velocidad del viento [m/s]
+h_forced=2.8+3*V_wind; %Coeficiente de convección forzada [W/m^2]
+Beta_grad=0; %Inclinación del módulo (ángulo en grados)
+Beta_rad=Beta_grad*pi/180; %Inclinación en radianes para fórmula de calor a longitud de onda larga
+Pot_ele=10; %Potencia eléctrica del módulo [W]
+T_sun=5777; %Temperatura del sol [K]
+
+T0=302.15;
+n=1800; %Valor máximo del intervalo en segundos sobre el que se pretende simular
+X=zeros(length(G),2);
+for j=1:length(G) %Ciclo para llenar una matriz que me de los rangos de tiempos
+    valor_ini=(j-1)*n;
+    valor_final=j*n;
+    X(j,1)=valor_ini;
+    X(j,2)=valor_final;
+end
+X;
+M=zeros(length(G),100);
+for i=1:length(G) %Ciclo que genera una matriz con los intervalos de tiempo, que son argumento de la función ODE
+    M(i,:)=linspace(X(i,1),X(i,2));
+end
+M_tiempos=M; %Matriz de tiempos
+T02=[T0,zeros(1,length(G)-1)];
+for i=1:length(G)
+    if i==1
+        T02=T0;
+        M(i,:)=M(1,:);
+    else
+        T02(i)=Y(end,i-1);
+    end
+    [tSol,Y(:,i)]=ode45(@(t,T)temperature(t,T,sigma,epsilon_sky,T_amb,delta_T,epsilon_mod,A,C_mod,alpha,G(i),eta_ref,beta_ref,T_ref,h_forced),M(i,:),T02(i));
+end
+Z=reshape(Y,1,[]);
+t=reshape(M_tiempos.',1,[]);
+plot(t,Z) 
+xlabel('Tiempo (s)','Fontname','Times New Roman')
+ylabel('Temperatura del módulo (K)','Fontname','Times New Roman')
+xlim([0 18000])
+hold on
+
+Num=xlsread('Validacion.xlsx');
+tiempo_medido=Num(1:301,2);
+Temp_medido=Num(1:301,3);
+plot(tiempo_medido,Temp_medido,"m")
+legend('PV-simulado','PV-medido','Location','northwest','Orientation','vertical')
+hold off
+
+
+function dTdt=temperature(t,T,sigma,epsilon_sky,T_amb,delta_T,epsilon_mod,A,C_mod,alpha,G,eta_ref,beta_ref,T_ref,h_forced)
+dTdt=(1/C_mod)*(sigma*A*(epsilon_sky*(T_amb-delta_T)^4-epsilon_mod*T^4)+alpha*G.*A...
+-eta_ref*(1-beta_ref*(T-T_ref)*A*G)-(h_forced+1.31*(T-T_amb)^(1/3))*A*(T-T_amb));
+end
